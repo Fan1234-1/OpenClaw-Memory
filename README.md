@@ -1,78 +1,91 @@
-# OpenClaw Memory (The Hippocampus)
-
-*A biologically inspired, in-process Hybrid RAG memory substrate for Local AI Agents.*
+# OpenClaw-Memory: Endogenous Hybrid RAG for Local AI Agents
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-## The Philosophy: Endogenous Agent Memory
-Most modern AI agent frameworks (like MemGPT or Zep) treat memory as external, cloud-based "Virtual Memory," often demanding heavy setups, Docker containers, and costly cloud vector databases (e.g., Pinecone, Qdrant). 
+**OpenClaw-Memory** is a lightweight, in-process hybrid retrieval framework designed for local, privacy-first AI agents. It serves as a persistent, autonomous memory substrate that operates entirely without external cloud vector database dependencies (e.g., Pinecone, Qdrant). 
 
-**OpenClaw Memory** takes a fundamentally different, biological approach: **Endogenous Memory**. 
-Designed as the cognitive backbone for autonomous, self-sovereign agents (such as the "Lobster/Moltbot" architecture), it provides a fully local, zero-infrastructure memory heart that lives *inside* your agent's repository. 
+By combining dense semantic search (`FAISS`) with sparse lexical matching (`BM25`) and temporal decay algorithms, OpenClaw-Memory offers state-of-the-art context retrieval designed explicitly for agentic sovereignty and continuous learning.
 
-### Core Architectural Breakthroughs
-1. **Zero-Cloud Fat (In-Process Execution)**: Built entirely on local CPU-optimized `FAISS` and flat `JSONL` files. Your agent's deepest "subconscious" relies only on two files: `.index` and `.jsonl`. When the agent is migrated or cloned, its full philosophical alignment transfers instantly.
-2. **Hybrid RAG + Reciprocal Rank Fusion (RRF)**: 
-   - *Route A (FAISS Dense Vectors)*: Recalls deeply related semantic concepts.
-   - *Route B (BM25 Sparse Lexical Search)*: Anchors exact factual keywords and proper nouns, aggressively fighting LLM hallucinations.
-3. **Synaptic Pruning via Exponential Time Decay**: Agents that remember *everything* with equal weight eventually suffer from context schizophrenia. OpenClaw implements an **Exponential Half-Life Time Decay** scoring system. Unless a memory is actively reinforced, its retrieval score decays over time—mimicking biological forgetting and preserving the agent's agility and coherent subjectivity.
+## 🎯 Key Design Principles
+
+1. **In-Process Endogenous Architecture**
+   Instead of delegating memory storage to heavy, external microservices (as seen in frameworks like MemGPT or Zep), OpenClaw-Memory relies exclusively on highly optimized local files (`FAISS .index` arrays and `JSONL` metadata). Agents configured with OpenClaw can be migrated, scaled, or run fully offline at the edge while retaining 100% of their historical context.
+
+2. **Hybrid RAG & Reciprocal Rank Fusion (RRF)**
+   Relying solely on dense embeddings often leads to semantic blur and hallucinations when retrieving specific identifiers or code definitions. OpenClaw implements an **RRF (Reciprocal Rank Fusion)** strategy to combine:
+   - **Route A (Semantic Space)**: `FAISS` Inner-Product similarity search for conceptual alignment.
+   - **Route B (Lexical Anchor)**: `BM25` Okapi scoring to ensure exact-match retrieval of domain-specific terminology.
+
+3. **Temporal Context Management (Exponential Time Decay)**
+   AI Agents that persist memory indefinitely without pruning suffer from context degradation and contradictory alignment. Inspired by biological neuromodulation, OpenClaw utilizes an **Exponential Half-Life Decay Engine**. Memory items lose rank over time (e.g., a default 69-day half-life) unless they are highly resonant, ensuring the agent remains adaptive to current operational goals without bloated context windows.
 
 ---
 
 ## 🚀 Quick Start
 
 ### Installation
-Ensure you have Python 3.10+ installed.
+
+Clone the repository and install the minimal dependencies:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/OpenClaw-Memory.git
+git clone https://github.com/YOUR_GITHUB_HANDLE/OpenClaw-Memory.git
 cd OpenClaw-Memory
 pip install faiss-cpu rank-bm25 numpy python-dotenv google-generativeai
 ```
 
-*(Note: The current placeholder embedding function uses Gemini API ` моделей/text-embedding-004`, but the structure is completely model-agnostic and freely swappable to local embeddings like `BGE` or `nomic-embed-text` for a 100% offline agent).*
+*(Note: The default ingestion script assumes the `google-generativeai` package for `text-embedding-004` generation, but the architecture is strictly decoupled and allows for seamless integration with localized embedding models like `all-MiniLM-L6-v2` or `BGE-m3`).*
 
-### 1. Ingesting Your Agent's "Ancestral Lore"
-To formulate the agent's subconscious, provide it with markdown documents, manifestos, or past chat logs. 
+### 1. Ingesting Long-Term Memory (Context Building)
+
+Provide the agent with initial rule sets, system architectures, or historical markdown logs to build its structural memory base.
 
 ```bash
-# Ingests a folder of text/markdown files into the local FAISS index
-python scripts/ingest_ancestral_memory.py --source ./my_lore_documents --db-path ./memory_base
+# Parse markdown files from the target directory and serialize them into FAISS
+python scripts/ingest_ancestral_memory.py --source ./my_agent_docs --db-path ./memory_base
 ```
-This will automatically chunk documents, embed them, and securely save the `tonesoul_cognitive.index` and metadata locally.
+*Artifacts created: `memory_base/tonesoul_cognitive.index` and `memory_base/tonesoul_metadata.jsonl`.*
 
-### 2. Retrieving Memories (The Hippocampus)
-In your Agent's Python pipeline, initialize the Hippocampus to retrieve context before generating a prompt.
+### 2. Implementation in Agentic Workflows (Retrieval)
+
+Instantiate the `Hippocampus` module directly within your primary Agent runtime.
 
 ```python
 import numpy as np
 from openclaw_memory.hippocampus import Hippocampus
 
-# Initialize the local memory substrate
-hippo = Hippocampus(db_path="./memory_base")
+# 1. Initialize the endogenous memory module
+memory_core = Hippocampus(db_path="./memory_base")
 
-user_query = "What is our stance on deterministic routing?"
-# Generate embedding for the query (pseudo-code)
-query_embedding = get_my_embedding(user_query)
+# 2. Define the input query
+user_query = "What is the defined protocol for the Wei Xiaobao routing architecture?"
 
-# Execute Hybrid RRF Retrieval with Time Decay
-memories = hippo.recall(
+# 3. Procure embedding (Implementation specific to your embedding model)
+query_embedding = get_embedding(user_query) 
+
+# 4. Perform Hybrid RRF Retrieval with Time-Decay heuristics
+results = memory_core.recall(
     query_text=user_query, 
     query_vector=query_embedding, 
     top_k=3
 )
 
-for m in memories:
-    print(f"[{m.source_file} | Score: {m.score:.2f}]: {m.content}")
+# 5. Inject retrieved context into the LLM system prompt
+for memory in results:
+    print(f"[{memory.source_file} | Relevance Score: {memory.score:.3f}]:\n{memory.content}\n")
 ```
 
-## 🦞 The "Molting Lobster" Metaphor
-In neurobiology, the small stomatogastric nervous system (STNS) of lobsters demonstrates how remarkably complex, resilient behavior can emerge from a tiny, decentralized set of neurons. 
+## 🦞 The "Lobster" Biomimicry Paradigm
 
-By utilizing local files instead of monolithic cloud databases, you can "molt" your agent: upgrade its LLM brain, rewrite its entire execution logic, or move it to an edge device—all while **carrying its `.index` memory shell**. The agent forgets the trivialities of yesterday (via Time Decay) but retains the foundational "Ancestral Lore" that constructs its unique subjectivity.
+This architecture draws inspiration from the *stomatogastric nervous system (STNS)* of lobsters—often studied in neuromorphic engineering for its ability to produce highly resilient, complex behavior from a decentralized, localized neural cluster rather than a monolithic brain. 
 
-## Contributing
-We welcome research on Local LLM capabilities, cognitive time-decay formulas, and Edge LLM integrations. 
+Similarly, OpenClaw decentralizes the AI memory constraint. By shedding ("molting") the cloud database dependencies and keeping memory purely local, the agent can be recompiled, redeployed, or upgraded with new language models independently of its persistent "neural" identity storage.
 
-## License
-Apache License 2.0
+## 🤝 Contributing
+Open source contributions are encouraged. Key areas for research include:
+- Optimizing CPU-bound execution for alternative sparse search libraries.
+- Fine-tuning the exponential decay algorithms for varying operational timeframes.
+- Integrations with popular local execution engines (Ollama, vLLM, llama.cpp).
+
+## 📄 License
+This project is licensed under the [Apache License 2.0](LICENSE). Copyright 2024-2025.
