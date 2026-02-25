@@ -4,6 +4,7 @@ import numpy as np
 import faiss
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from openclaw_memory.embeddings import BaseEmbedding
 
 try:
     from rank_bm25 import BM25Okapi
@@ -24,11 +25,12 @@ class Hippocampus:
     Combines FAISS Vector Search with time-decay and BM25 Keyword Search.
     Inspired by 'Personal AI Memory'.
     """
-    def __init__(self, db_path: str = "memory_base"):
+    def __init__(self, db_path: str = "memory_base", embedder: Optional[BaseEmbedding] = None):
         self.db_path = db_path
         self.index_file = os.path.join(db_path, "tonesoul_cognitive.index")
         self.meta_file = os.path.join(db_path, "tonesoul_metadata.jsonl")
         
+        self.embedder = embedder
         self.index = None
         self.metadata = []
         self.bm25 = None
@@ -110,10 +112,15 @@ class Hippocampus:
             
         return results
 
-    def recall(self, query_text: str, query_vector: np.ndarray, top_k: int = 5) -> List[MemoryResult]:
+    def recall(self, query_text: str, query_vector: Optional[np.ndarray] = None, top_k: int = 5) -> List[MemoryResult]:
         """
         Main retrieval function using Reciprocal Rank Fusion (RRF).
         """
+        if query_vector is None:
+            if self.embedder is None:
+                raise ValueError("hippocampus requires either a query_vector or an initialized embedder.")
+            query_vector = self.embedder.encode(query_text)
+            
         vec_results = self.search_vectors(query_vector, top_k=20)
         kw_results = self.search_keywords(query_text, top_k=20)
         

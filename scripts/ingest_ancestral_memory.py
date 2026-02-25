@@ -7,15 +7,23 @@ import faiss
 from datetime import datetime
 from pathlib import Path
 
-# Placeholder for actual embedding logic.
-# If connecting to the actual ToneSoul system, we would import the embedding client here.
+# Real local embedding using SentenceTransformers
+try:
+    from sentence_transformers import SentenceTransformer
+    # Using a fast, lightweight local model (downloads automatically if not present)
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+except ImportError:
+    model = None
+    print("WARNING: sentence-transformers not installed. Fallback empty embeddings.")
+
 def get_embedding(text: str) -> np.ndarray:
-    # Dummy embedding generation (Replace with Gemini/OpenAI embedding calls)
-    import random
-    vec = np.array([random.uniform(-1, 1) for _ in range(768)], dtype=np.float32)
-    # Norm to 1 for cosine similarity
-    faiss.normalize_L2(np.array([vec]))
-    return vec
+    if model is None:
+        return np.zeros(384, dtype=np.float32)
+    # Generate real embedding
+    vec = model.encode(text)
+    # Normalize for inner product (cosine similarity)
+    vec = vec / np.linalg.norm(vec)
+    return vec.astype(np.float32)
 
 def chunk_markdown(content: str, max_words=200) -> list[str]:
     paragraphs = content.split("\n\n")
@@ -33,8 +41,8 @@ def chunk_markdown(content: str, max_words=200) -> list[str]:
     return [c for c in chunks if len(c.strip()) > 10]
 
 def ingest_directory(dir_path: str, memory_db_path: str):
-    # Setup FAISS flat index (equivalent to Zvec in-process raw performance)
-    dimension = 768
+    # Setup FAISS flat index
+    dimension = 384  # Updated to match all-MiniLM-L6-v2
     index_file = os.path.join(memory_db_path, "tonesoul_cognitive.index")
     meta_file = os.path.join(memory_db_path, "tonesoul_metadata.jsonl")
     
