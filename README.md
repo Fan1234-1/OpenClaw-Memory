@@ -29,12 +29,18 @@ By combining dense semantic search (`FAISS`) with sparse lexical matching (`BM25
 Clone the repository and install the minimal dependencies:
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_HANDLE/OpenClaw-Memory.git
+git clone https://github.com/Fan1234-1/OpenClaw-Memory.git
 cd OpenClaw-Memory
-pip install faiss-cpu rank-bm25 numpy python-dotenv google-generativeai
+pip install -r requirements.txt
 ```
 
-*(Note: The default ingestion script assumes the `google-generativeai` package for `text-embedding-004` generation, but the architecture is strictly decoupled and allows for seamless integration with localized embedding models like `all-MiniLM-L6-v2` or `BGE-m3`).*
+For local embedding support (recommended), also install:
+
+```bash
+pip install sentence-transformers
+```
+
+*(Note: The ingestion script uses `sentence-transformers` with the `all-MiniLM-L6-v2` model by default. The architecture is strictly decoupled and allows for seamless integration with other embedding models like `BGE-m3` or any OpenAI-compatible API.)*
 
 ### 1. Ingesting Long-Term Memory (Context Building)
 
@@ -75,11 +81,31 @@ for memory in results:
     print(f"[{memory.source_file} | Relevance Score: {memory.score:.3f}]:\n{memory.content}\n")
 ```
 
+---
+
+## 🔒 Security & Design Clarifications
+
+> **This is a retrieval library, NOT an agent instruction set or prompt injection framework.**
+
+The following clarifications are provided for transparency:
+
+| Concern | Clarification |
+|---|---|
+| **Auto-install / Prompt Injection** | This README contains standard installation documentation only. There are no hidden instructions, embedded agent directives, or automated execution triggers. |
+| **Network Calls** | OpenClaw-Memory makes **zero network calls** at retrieval time. All operations (FAISS search, BM25 scoring, time-decay) run entirely in-process on local files. |
+| **File Access Scope** | The `Hippocampus` module only reads from its configured `db_path` directory. Path traversal attacks are rejected at initialization via `os.path.abspath()` validation. All file operations are **read-only** during retrieval. |
+| **Data Provenance** | Each ingested memory chunk includes an `origin` metadata field (e.g., `"user_document"`) to distinguish user-provided content from AI-generated content, preventing hallucination feedback loops. |
+| **Biomimicry Language** | Terms like "Hippocampus" and "Lobster Paradigm" are **naming metaphors** inspired by neuroscience research, not claims of sentience or consciousness. The underlying implementation is standard information retrieval (FAISS inner-product search + BM25 Okapi + RRF fusion). |
+
+---
+
 ## 🦞 The "Lobster" Biomimicry Paradigm
 
 This architecture draws inspiration from the *stomatogastric nervous system (STNS)* of lobsters—often studied in neuromorphic engineering for its ability to produce highly resilient, complex behavior from a decentralized, localized neural cluster rather than a monolithic brain. 
 
-Similarly, OpenClaw decentralizes the AI memory constraint. By shedding ("molting") the cloud database dependencies and keeping memory purely local, the agent can be recompiled, redeployed, or upgraded with new language models independently of its persistent "neural" identity storage.
+Similarly, OpenClaw decentralizes the AI memory constraint. By shedding ("molting") the cloud database dependencies and keeping memory purely local, the agent can be recompiled, redeployed, or upgraded with new language models independently of its persistent identity storage.
+
+> **Note:** This is a design metaphor for architectural decision-making, not a claim about AI consciousness. The core algorithm is Reciprocal Rank Fusion — a well-established technique in information retrieval research ([Cormack et al., 2009](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)).
 
 ## 🤝 Contributing
 Open source contributions are encouraged. Key areas for research include:

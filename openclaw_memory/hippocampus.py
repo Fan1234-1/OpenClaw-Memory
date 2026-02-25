@@ -26,9 +26,13 @@ class Hippocampus:
     Inspired by 'Personal AI Memory'.
     """
     def __init__(self, db_path: str = "memory_base", embedder: Optional[BaseEmbedding] = None):
-        self.db_path = db_path
-        self.index_file = os.path.join(db_path, "tonesoul_cognitive.index")
-        self.meta_file = os.path.join(db_path, "tonesoul_metadata.jsonl")
+        # Validate db_path to prevent path traversal attacks
+        normalized = os.path.normpath(db_path)
+        if ".." in normalized.split(os.sep):
+            raise ValueError(f"Invalid db_path: path traversal detected in '{db_path}'")
+        self.db_path = os.path.abspath(db_path)
+        self.index_file = os.path.join(self.db_path, "tonesoul_cognitive.index")
+        self.meta_file = os.path.join(self.db_path, "tonesoul_metadata.jsonl")
         
         self.embedder = embedder
         self.index = None

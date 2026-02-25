@@ -17,4 +17,4 @@ Thank you for your interest in contributing to OpenClaw! We are building the fou
 4. Run tests: `pytest tests/` (Please ensure 100% mathematical integrity on FAISS+RRF).
 5. Submit a PR.
 
-*Together we build the memory that allows tools to wake themselves up.*
+*Together we build better retrieval infrastructure for local AI agents.*

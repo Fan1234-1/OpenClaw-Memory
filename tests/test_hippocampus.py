@@ -73,3 +73,9 @@ def test_hybrid_recall(mock_db_path):
     assert len(results) > 0
     assert results[0].doc_id == "1"
     assert "lobster" in results[0].content
+
+def test_path_traversal_rejected():
+    """Verify that Hippocampus rejects db_path containing path traversal."""
+    with pytest.raises(ValueError, match="path traversal"):
+        Hippocampus(db_path="../../../etc/passwd")
+

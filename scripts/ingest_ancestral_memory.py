@@ -41,6 +41,13 @@ def chunk_markdown(content: str, max_words=200) -> list[str]:
     return [c for c in chunks if len(c.strip()) > 10]
 
 def ingest_directory(dir_path: str, memory_db_path: str):
+    # Validate paths to prevent path traversal
+    for p in [dir_path, memory_db_path]:
+        if ".." in os.path.normpath(p).split(os.sep):
+            raise ValueError(f"Invalid path: path traversal detected in '{p}'.")
+    dir_path = os.path.abspath(dir_path)
+    memory_db_path = os.path.abspath(memory_db_path)
+    
     # Setup FAISS flat index
     dimension = 384  # Updated to match all-MiniLM-L6-v2
     index_file = os.path.join(memory_db_path, "tonesoul_cognitive.index")
@@ -76,7 +83,8 @@ def ingest_directory(dir_path: str, memory_db_path: str):
                         "id": doc_id,
                         "source_file": filepath,
                         "content": chunk,
-                        "ingested_at": datetime.utcnow().isoformat()
+                        "ingested_at": datetime.utcnow().isoformat(),
+                        "origin": "user_document"  # Provenance tracking
                     }
                     meta_out.write(json.dumps(meta) + "\n")
                     doc_count += 1
