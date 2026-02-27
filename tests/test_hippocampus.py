@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 import pytest
 
 from openclaw_memory.hippocampus import Hippocampus
@@ -18,7 +18,7 @@ def mock_db_path(tmp_path):
     meta_file = path / "tonesoul_metadata.jsonl"
     
     # Write metadata
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     old_time = datetime(2000, 1, 1).isoformat()
     
     docs = [
@@ -54,8 +54,8 @@ def test_hippocampus_initialization(mock_db_path):
 def test_time_decay(mock_db_path):
     hippo = Hippocampus(db_path=mock_db_path)
     # Give it a base score of 1.0
-    recent_score = hippo._apply_time_decay(1.0, datetime.utcnow().isoformat())
-    old_score = hippo._apply_time_decay(1.0, datetime(2000, 1, 1).isoformat())
+    recent_score = hippo._apply_time_decay(1.0, datetime.now(timezone.utc).isoformat())
+    old_score = hippo._apply_time_decay(1.0, datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat())
     
     # The old score should be drastically decayed compared to the recent one
     assert old_score < recent_score

@@ -4,7 +4,7 @@ import json
 import uuid
 import numpy as np
 import faiss
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Real local embedding using SentenceTransformers
@@ -83,7 +83,7 @@ def ingest_directory(dir_path: str, memory_db_path: str):
                         "id": doc_id,
                         "source_file": filepath,
                         "content": chunk,
-                        "ingested_at": datetime.utcnow().isoformat(),
+                        "ingested_at": datetime.now(timezone.utc).isoformat(),
                         "origin": "user_document"  # Provenance tracking
                     }
                     meta_out.write(json.dumps(meta) + "\n")

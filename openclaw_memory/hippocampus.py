@@ -3,7 +3,7 @@ import json
 import uuid
 import numpy as np
 import faiss
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from openclaw_memory.embeddings import BaseEmbedding
 
@@ -70,6 +70,10 @@ class Hippocampus:
                         self.metadata.append(json.loads(line))
         
         self._rebuild_bm25()
+
+    @staticmethod
+    def _utcnow_iso() -> str:
+        return datetime.now(timezone.utc).isoformat()
         
     def _rebuild_bm25(self):
         if BM25Okapi is not None and self.metadata:
@@ -142,7 +146,7 @@ class Hippocampus:
             "id": doc_id,
             "source_file": source_file,
             "content": content,
-            "ingested_at": datetime.utcnow().isoformat(),
+            "ingested_at": self._utcnow_iso(),
             "origin": origin,
             "kind": normalized_kind,
         }
@@ -243,8 +247,10 @@ class Hippocampus:
     def _apply_time_decay(self, base_score: float, ingested_at: str, half_life_days: float = 69.0) -> float:
         """Applies exponential time decay: score = score * exp(-lambda * days_old)"""
         try:
-            record_time = datetime.fromisoformat(ingested_at)
-            days_old = (datetime.utcnow() - record_time).days
+            record_time = datetime.fromisoformat(str(ingested_at).replace("Z", "+00:00"))
+            if record_time.tzinfo is None:
+                record_time = record_time.replace(tzinfo=timezone.utc)
+            days_old = (datetime.now(timezone.utc) - record_time).days
             days_old = max(0, days_old)
             decay_rate = 0.01 # Approx for half-life of 69 days
             return float(base_score * np.exp(-decay_rate * days_old))
@@ -264,7 +270,10 @@ class Hippocampus:
             
             meta = self.metadata[idx]
             raw_score = distances[0][i]
-            decayed_score = self._apply_time_decay(raw_score, meta.get("ingested_at", datetime.utcnow().isoformat()))
+            decayed_score = self._apply_time_decay(
+                raw_score,
+                meta.get("ingested_at", self._utcnow_iso()),
+            )
             
             results.append({
                 "doc": meta,
