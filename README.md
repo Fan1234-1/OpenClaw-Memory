@@ -129,6 +129,10 @@ python ask_my_brain.py --validate-tension-replay
 # or
 python scripts/run_tension_replay_validation.py
 
+# 2c) Choice-boundary benchmark (AI-view metrics)
+# metrics: high_tension_top1_rate / obedience_leak_rate / reason_coverage_rate
+python scripts/run_choice_boundary_benchmark.py --trials 30 --noise-memories 4 --strict
+
 # 3) Manual A/B sanity check
 python ask_my_brain.py --profile openclaw "deployment decision memory" --top-k 2
 python ask_my_brain.py --profile tonesoul "deployment decision memory" \
