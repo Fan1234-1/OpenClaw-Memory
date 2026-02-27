@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local memory artifacts
+memory_base/
+
+# OS/editor
+.DS_Store
+Thumbs.db

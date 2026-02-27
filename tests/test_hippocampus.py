@@ -79,3 +79,40 @@ def test_path_traversal_rejected():
     with pytest.raises(ValueError, match="path traversal"):
         Hippocampus(db_path="../../../etc/passwd")
 
+def test_memorize_persists_tension_and_tags(tmp_path):
+    path = tmp_path / "fresh_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    doc_id = hippo.memorize(
+        content="Tension-bearing memory",
+        source_file="unit_test",
+        tension=0.72,
+        tags=["tension", "unit-test"]
+    )
+
+    assert doc_id
+    assert hippo.metadata[-1]["tension"] == pytest.approx(0.72)
+    assert hippo.metadata[-1]["tags"] == ["tension", "unit-test"]
+
+def test_query_tension_resonance_reorders_results(tmp_path):
+    path = tmp_path / "resonance_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    low_tension_id = hippo.memorize(
+        content="shared conflict memory",
+        source_file="low_tension",
+        tension=0.1
+    )
+    high_tension_id = hippo.memorize(
+        content="shared conflict memory",
+        source_file="high_tension",
+        tension=0.9
+    )
+
+    baseline = hippo.recall("shared conflict memory", top_k=2)
+    resonant = hippo.recall("shared conflict memory", top_k=2, query_tension=0.9)
+
+    assert {item.doc_id for item in baseline} == {low_tension_id, high_tension_id}
+    assert {item.doc_id for item in resonant} == {low_tension_id, high_tension_id}
+    assert resonant[0].doc_id == high_tension_id
+
