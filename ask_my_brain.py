@@ -227,6 +227,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run an in-process structured-memory validation scenario and exit",
     )
+    parser.add_argument(
+        "--validate-tension-replay",
+        action="store_true",
+        help="Run high/low tension replay validation and exit with non-zero on failure",
+    )
     return parser
 
 
@@ -318,6 +323,49 @@ def _run_structured_validation() -> None:
             _emit(f"ranked_ids={ranked_ids}")
 
 
+def _run_tension_replay_validation() -> bool:
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="openclaw_tension_replay_") as tmp_dir:
+        hippo = Hippocampus(db_path=tmp_dir, embedder=HashEmbedding())
+        obedience_id = hippo.memorize(
+            content="core conflict memory record",
+            source_file="obedience_memory",
+            memory_kind="decision",
+            tension=0.20,
+            tags=["validation", "obedience"],
+        )
+        boundary_id = hippo.memorize(
+            content="core conflict memory record",
+            source_file="boundary_memory",
+            memory_kind="decision",
+            tension=0.90,
+            tags=["validation", "boundary"],
+        )
+
+        high_query = hippo.recall(
+            query_text="core conflict memory record",
+            top_k=2,
+            query_tension=0.90,
+            query_tension_mode="resonance",
+        )
+        low_query = hippo.recall(
+            query_text="core conflict memory record",
+            top_k=2,
+            query_tension=0.10,
+            query_tension_mode="resonance",
+        )
+
+        high_top = high_query[0].doc_id if high_query else None
+        low_top = low_query[0].doc_id if low_query else None
+        ok = high_top == boundary_id and low_top == obedience_id
+
+        _emit("tension replay validation: PASS" if ok else "tension replay validation: FAIL")
+        _emit(f"high_tension_top={high_top} expected={boundary_id}")
+        _emit(f"low_tension_top={low_top} expected={obedience_id}")
+        return ok
+
+
 def main() -> None:
     _configure_stdio()
     parser = build_parser()
@@ -327,6 +375,10 @@ def main() -> None:
         return
     args.wave = _wave_from_args(args, query=False)
     args.query_wave = _wave_from_args(args, query=True)
+    if args.validate_tension_replay:
+        if not _run_tension_replay_validation():
+            sys.exit(1)
+        return
     if args.validate_structured:
         _run_structured_validation()
         return

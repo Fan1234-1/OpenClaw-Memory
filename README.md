@@ -124,6 +124,11 @@ python -m pytest -q
 # 2) In-process validation scenario (no external model/download)
 python ask_my_brain.py --validate-structured
 
+# 2b) Tension replay validation (high-tension memory should outrank low-tension memory)
+python ask_my_brain.py --validate-tension-replay
+# or
+python scripts/run_tension_replay_validation.py
+
 # 3) Manual A/B sanity check
 python ask_my_brain.py --profile openclaw "deployment decision memory" --top-k 2
 python ask_my_brain.py --profile tonesoul "deployment decision memory" \
