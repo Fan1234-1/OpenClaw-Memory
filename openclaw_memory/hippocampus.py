@@ -4,7 +4,7 @@ import uuid
 import numpy as np
 import faiss
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from openclaw_memory.embeddings import BaseEmbedding
 
 try:
@@ -13,12 +13,21 @@ except ImportError:
     BM25Okapi = None
 
 class MemoryResult:
-    def __init__(self, doc_id: str, content: str, source_file: str, score: float, rank: int):
+    def __init__(
+        self,
+        doc_id: str,
+        content: str,
+        source_file: str,
+        score: float,
+        rank: int,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         self.doc_id = doc_id
         self.content = content
         self.source_file = source_file
         self.score = score
         self.rank = rank
+        self.metadata = metadata or {}
 
 class Hippocampus:
     """
@@ -69,6 +78,37 @@ class Hippocampus:
         else:
             self.bm25 = None
 
+    @classmethod
+    def _validate_memory_kind(cls, memory_kind: str) -> str:
+        kind = str(memory_kind).strip().lower()
+        if not kind:
+            raise ValueError("memory_kind cannot be empty")
+        if kind not in cls.VALID_MEMORY_KINDS:
+            allowed = ", ".join(sorted(cls.VALID_MEMORY_KINDS))
+            raise ValueError(f"memory_kind must be one of: {allowed}")
+        return kind
+
+    @classmethod
+    def _validate_wave(cls, wave: Optional[Dict[str, Any]], field_name: str) -> Optional[Dict[str, float]]:
+        if wave is None:
+            return None
+        if not isinstance(wave, dict):
+            raise ValueError(f"{field_name} must be a dict")
+
+        normalized: Dict[str, float] = {}
+        for key, value in wave.items():
+            if key not in cls.WAVE_KEYS:
+                allowed = ", ".join(cls.WAVE_KEYS)
+                raise ValueError(f"{field_name} contains unknown key '{key}'. Allowed keys: {allowed}")
+            if value is None:
+                continue
+            numeric = float(value)
+            if not (0.0 <= numeric <= 1.0):
+                raise ValueError(f"{field_name}.{key} must be between 0.0 and 1.0")
+            normalized[key] = numeric
+
+        return normalized or None
+
     def memorize(
         self,
         content: str,
@@ -76,6 +116,8 @@ class Hippocampus:
         origin: str = "agent_consolidation",
         tension: Optional[float] = None,
         tags: Optional[List[str]] = None,
+        memory_kind: str = "note",
+        wave: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Dynamically ingests a new memory chunk into the current index and persistent storage.
@@ -84,6 +126,8 @@ class Hippocampus:
             raise ValueError("Cannot memorize: no embedder provided to Hippocampus.")
         if tension is not None and not (0.0 <= float(tension) <= 1.0):
             raise ValueError("tension must be between 0.0 and 1.0")
+        normalized_kind = self._validate_memory_kind(memory_kind)
+        normalized_wave = self._validate_wave(wave, "wave")
             
         doc_id = str(uuid.uuid4())
         vector = self.embedder.encode(content)
@@ -99,12 +143,15 @@ class Hippocampus:
             "source_file": source_file,
             "content": content,
             "ingested_at": datetime.utcnow().isoformat(),
-            "origin": origin
+            "origin": origin,
+            "kind": normalized_kind,
         }
         if tension is not None:
             meta["tension"] = float(tension)
         if tags:
             meta["tags"] = [str(tag) for tag in tags if str(tag).strip()]
+        if normalized_wave is not None:
+            meta["wave"] = normalized_wave
         self.metadata.append(meta)
         
         with open(self.meta_file, 'a', encoding='utf-8') as f:
@@ -117,10 +164,19 @@ class Hippocampus:
 
     @staticmethod
     def _apply_tension_resonance(base_score: float, doc: Dict[str, Any], query_tension: Optional[float]) -> float:
+        return Hippocampus._apply_tension_signal(base_score, doc, query_tension, mode="resonance")
+
+    @staticmethod
+    def _apply_tension_signal(
+        base_score: float,
+        doc: Dict[str, Any],
+        query_tension: Optional[float],
+        mode: str = "resonance",
+    ) -> float:
         """
         Light reweighting over RRF score.
-        Keep retrieval dominated by relevance while preferring memories
-        whose recorded tension is close to the query tension.
+        mode="resonance" favors similar tension.
+        mode="conflict" favors high tension difference.
         """
         if query_tension is None:
             return base_score
@@ -138,9 +194,51 @@ class Hippocampus:
         if not (0.0 <= doc_tension <= 1.0):
             return base_score
 
-        resonance = 1.0 - abs(query_tension - doc_tension)
-        resonance = max(0.0, min(1.0, resonance))
-        return float(base_score * (1.0 + 0.20 * resonance))
+        delta = abs(query_tension - doc_tension)
+        delta = max(0.0, min(1.0, delta))
+        if mode == "conflict":
+            signal = delta
+        else:
+            signal = 1.0 - delta
+        return float(base_score * (1.0 + 0.20 * signal))
+
+    @classmethod
+    def _apply_wave_resonance(
+        cls,
+        base_score: float,
+        doc: Dict[str, Any],
+        query_wave: Optional[Dict[str, float]],
+        mode: str = "resonance",
+    ) -> float:
+        """
+        Reweight by "AI-meaningful" wave similarity.
+        We only compare shared dimensions to stay backward compatible.
+        """
+        if query_wave is None:
+            return base_score
+
+        doc_wave_raw = doc.get("wave")
+        if not isinstance(doc_wave_raw, dict):
+            return base_score
+
+        try:
+            doc_wave = cls._validate_wave(doc_wave_raw, "doc.wave")
+        except ValueError:
+            return base_score
+        if doc_wave is None:
+            return base_score
+
+        shared_keys = [key for key in cls.WAVE_KEYS if key in query_wave and key in doc_wave]
+        if not shared_keys:
+            return base_score
+
+        distance = float(np.mean([abs(query_wave[key] - doc_wave[key]) for key in shared_keys]))
+        distance = max(0.0, min(1.0, distance))
+        if mode == "conflict":
+            signal = distance
+        else:
+            signal = 1.0 - distance
+        return float(base_score * (1.0 + 0.25 * signal))
 
     def _apply_time_decay(self, base_score: float, ingested_at: str, half_life_days: float = 69.0) -> float:
         """Applies exponential time decay: score = score * exp(-lambda * days_old)"""
@@ -206,6 +304,9 @@ class Hippocampus:
         query_vector: Optional[np.ndarray] = None,
         top_k: int = 5,
         query_tension: Optional[float] = None,
+        query_tension_mode: str = "resonance",
+        query_wave: Optional[Dict[str, Any]] = None,
+        query_wave_mode: str = "resonance",
     ) -> List[MemoryResult]:
         """
         Main retrieval function using Reciprocal Rank Fusion (RRF).
@@ -214,6 +315,11 @@ class Hippocampus:
             if self.embedder is None:
                 raise ValueError("hippocampus requires either a query_vector or an initialized embedder.")
             query_vector = self.embedder.encode(query_text)
+        if query_tension_mode not in {"resonance", "conflict"}:
+            raise ValueError("query_tension_mode must be 'resonance' or 'conflict'")
+        if query_wave_mode not in {"resonance", "conflict"}:
+            raise ValueError("query_wave_mode must be 'resonance' or 'conflict'")
+        normalized_query_wave = self._validate_wave(query_wave, "query_wave")
             
         vec_results = self.search_vectors(query_vector, top_k=20)
         kw_results = self.search_keywords(query_text, top_k=20)
@@ -242,7 +348,14 @@ class Hippocampus:
         # Sort and return top_k
         adjusted_scores: Dict[str, float] = {}
         for doc_id, score in fusion_scores.items():
-            adjusted_scores[doc_id] = self._apply_tension_resonance(score, doc_map[doc_id], query_tension)
+            adjusted = self._apply_tension_signal(score, doc_map[doc_id], query_tension, mode=query_tension_mode)
+            adjusted = self._apply_wave_resonance(
+                adjusted,
+                doc_map[doc_id],
+                normalized_query_wave,
+                mode=query_wave_mode,
+            )
+            adjusted_scores[doc_id] = adjusted
 
         sorted_docs = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
         
@@ -255,8 +368,24 @@ class Hippocampus:
                     content=doc["content"],
                     source_file=doc["source_file"],
                     score=score,
-                    rank=rank + 1
+                    rank=rank + 1,
+                    metadata=doc,
                 )
             )
             
         return final_results
+    VALID_MEMORY_KINDS = {
+        "note",
+        "fact",
+        "decision",
+        "constraint",
+        "reflection",
+        "incident",
+        "plan",
+    }
+    WAVE_KEYS: Tuple[str, ...] = (
+        "uncertainty_shift",
+        "divergence_shift",
+        "risk_shift",
+        "revision_shift",
+    )

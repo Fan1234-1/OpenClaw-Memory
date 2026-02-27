@@ -16,17 +16,31 @@
 1. 記憶寫入新增欄位
 - `tension: float in [0,1]`
 - `tags: list[str]`
+- `kind: memory type`
+- `wave: {uncertainty_shift, divergence_shift, risk_shift, revision_shift}`
 
-2. 查詢新增張力共振
+2. 查詢新增張力訊號
 - 查詢可帶 `query_tension: float in [0,1]`
-- 在 RRF 後做輕量重加權：
+- 在 RRF 後做輕量重加權，可選兩種模式：
 
 ```text
+# resonance mode
 resonance = 1 - abs(query_tension - memory_tension)
 final_score = rrf_score * (1 + 0.20 * clamp(resonance, 0, 1))
+
+# conflict mode
+delta = abs(query_tension - memory_tension)
+final_score = rrf_score * (1 + 0.20 * clamp(delta, 0, 1))
 ```
 
-3. 安全邊界
+3. 查詢新增波動共振（AI-meaningful）
+```text
+distance = mean(abs(query_wave[i] - memory_wave[i])) over shared dimensions
+resonance = 1 - distance
+final_score = score_after_tension * (1 + 0.25 * clamp(resonance, 0, 1))
+```
+
+4. 安全邊界
 - 不改動原始向量/BM25檢索流程
 - 沒有 `tension` 的舊記憶不會壞（僅不加權）
 - `tension` 非法值會被拒絕

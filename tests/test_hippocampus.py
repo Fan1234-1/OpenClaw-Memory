@@ -86,13 +86,22 @@ def test_memorize_persists_tension_and_tags(tmp_path):
     doc_id = hippo.memorize(
         content="Tension-bearing memory",
         source_file="unit_test",
+        memory_kind="decision",
         tension=0.72,
-        tags=["tension", "unit-test"]
+        tags=["tension", "unit-test"],
+        wave={
+            "uncertainty_shift": 0.4,
+            "divergence_shift": 0.5,
+            "risk_shift": 0.8,
+            "revision_shift": 0.3,
+        },
     )
 
     assert doc_id
+    assert hippo.metadata[-1]["kind"] == "decision"
     assert hippo.metadata[-1]["tension"] == pytest.approx(0.72)
     assert hippo.metadata[-1]["tags"] == ["tension", "unit-test"]
+    assert hippo.metadata[-1]["wave"]["risk_shift"] == pytest.approx(0.8)
 
 def test_query_tension_resonance_reorders_results(tmp_path):
     path = tmp_path / "resonance_memory"
@@ -115,4 +124,110 @@ def test_query_tension_resonance_reorders_results(tmp_path):
     assert {item.doc_id for item in baseline} == {low_tension_id, high_tension_id}
     assert {item.doc_id for item in resonant} == {low_tension_id, high_tension_id}
     assert resonant[0].doc_id == high_tension_id
+
+def test_query_tension_conflict_reorders_results(tmp_path):
+    path = tmp_path / "conflict_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    low_tension_id = hippo.memorize(
+        content="conflict target memory",
+        source_file="low_tension",
+        tension=0.1,
+    )
+    high_tension_id = hippo.memorize(
+        content="conflict target memory",
+        source_file="high_tension",
+        tension=0.9,
+    )
+
+    conflict = hippo.recall(
+        "conflict target memory",
+        top_k=2,
+        query_tension=0.9,
+        query_tension_mode="conflict",
+    )
+
+    assert {item.doc_id for item in conflict} == {low_tension_id, high_tension_id}
+    assert conflict[0].doc_id == low_tension_id
+
+def test_query_wave_resonance_reorders_results(tmp_path):
+    path = tmp_path / "wave_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    low_wave_id = hippo.memorize(
+        content="structured memory target",
+        source_file="low_wave",
+        wave={
+            "uncertainty_shift": 0.1,
+            "divergence_shift": 0.2,
+            "risk_shift": 0.2,
+            "revision_shift": 0.2,
+        },
+    )
+    high_wave_id = hippo.memorize(
+        content="structured memory target",
+        source_file="high_wave",
+        wave={
+            "uncertainty_shift": 0.9,
+            "divergence_shift": 0.9,
+            "risk_shift": 0.95,
+            "revision_shift": 0.85,
+        },
+    )
+
+    baseline = hippo.recall("structured memory target", top_k=2)
+    resonant = hippo.recall(
+        "structured memory target",
+        top_k=2,
+        query_wave={
+            "uncertainty_shift": 0.9,
+            "divergence_shift": 0.85,
+            "risk_shift": 0.95,
+            "revision_shift": 0.9,
+        },
+    )
+
+    assert {item.doc_id for item in baseline} == {low_wave_id, high_wave_id}
+    assert {item.doc_id for item in resonant} == {low_wave_id, high_wave_id}
+    assert resonant[0].doc_id == high_wave_id
+
+def test_query_wave_conflict_reorders_results(tmp_path):
+    path = tmp_path / "wave_conflict_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    low_wave_id = hippo.memorize(
+        content="structured wave conflict target",
+        source_file="low_wave",
+        wave={
+            "uncertainty_shift": 0.2,
+            "divergence_shift": 0.2,
+            "risk_shift": 0.2,
+            "revision_shift": 0.2,
+        },
+    )
+    high_wave_id = hippo.memorize(
+        content="structured wave conflict target",
+        source_file="high_wave",
+        wave={
+            "uncertainty_shift": 0.9,
+            "divergence_shift": 0.9,
+            "risk_shift": 0.95,
+            "revision_shift": 0.85,
+        },
+    )
+
+    conflict = hippo.recall(
+        "structured wave conflict target",
+        top_k=2,
+        query_wave={
+            "uncertainty_shift": 0.9,
+            "divergence_shift": 0.9,
+            "risk_shift": 0.95,
+            "revision_shift": 0.9,
+        },
+        query_wave_mode="conflict",
+    )
+
+    assert {item.doc_id for item in conflict} == {low_wave_id, high_wave_id}
+    assert conflict[0].doc_id == low_wave_id
 

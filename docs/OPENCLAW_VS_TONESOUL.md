@@ -13,6 +13,7 @@ Use ToneSoul profile when you need memory retrieval to preserve semantic tension
 ```bash
 python ask_my_brain.py --profile tonesoul --learn "high-risk change should degrade safely" --tension 0.82 --tag safety
 python ask_my_brain.py --profile tonesoul "release strategy" --query-tension 0.8
+python ask_my_brain.py --profile tonesoul "release strategy" --query-tension 0.8 --query-tension-mode conflict
 ```
 
 ## Design Principle
