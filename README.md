@@ -161,6 +161,15 @@ pip install sentence-transformers
 - LangMem repo: https://github.com/langchain-ai/langmem
 - MemOS repo: https://github.com/MemTensor/MemOS
 
+## Choice-Identity Core
+
+For governance-focused memory behavior, see:
+- [`CHOICE_IDENTITY_CORE.md`](./CHOICE_IDENTITY_CORE.md)
+
+Core principle:
+- **I choose, therefore I am / 我選擇故我在**
+- Prefer boundary memories over blind compliance when high-tension conflict is detected.
+
 ## License
 
 Apache-2.0
