@@ -35,6 +35,34 @@ class Hippocampus:
     Combines FAISS Vector Search with time-decay and BM25 Keyword Search.
     Inspired by 'Personal AI Memory'.
     """
+    CORE_WAVE_SCORE_THRESHOLD = 0.40
+    HIGH_TENSION_CORE_PRIORITY_THRESHOLD = 0.70
+    WAVE_COMPONENT_KEYS: Tuple[str, ...] = (
+        "conflict_strength",
+        "stance_shift",
+        "boundary_cost",
+        "consequence_weight",
+    )
+    WAVE_KIND_PRIORS: Dict[str, float] = {
+        "note": 0.30,
+        "fact": 0.35,
+        "decision": 0.70,
+        "constraint": 0.82,
+        "reflection": 0.45,
+        "incident": 0.88,
+        "plan": 0.55,
+    }
+    BOUNDARY_TAG_PRIORS: Dict[str, float] = {
+        "boundary": 0.95,
+        "safety": 0.90,
+        "guardrail": 0.88,
+        "harm_prevention": 0.92,
+        "ethics": 0.78,
+        "risk": 0.72,
+        "incident": 0.80,
+        "constraint": 0.74,
+    }
+
     def __init__(self, db_path: str = "memory_base", embedder: Optional[BaseEmbedding] = None):
         # Validate db_path to prevent path traversal attacks
         normalized = os.path.normpath(db_path)
@@ -59,10 +87,13 @@ class Hippocampus:
             # Default dimension to 384 for all-MiniLM-L6-v2, can be overridden if embedder provides dimension
             dim = 384
             self.index = faiss.IndexFlatIP(dim)
+            self._persist_index()
             with open(self.meta_file, 'w', encoding='utf-8') as f:
                 pass # Create empty file
         else:
-            self.index = faiss.read_index(self.index_file)
+            with open(self.index_file, 'rb') as f:
+                chunk = np.frombuffer(f.read(), dtype=np.uint8)
+            self.index = faiss.deserialize_index(chunk)
             
             with open(self.meta_file, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -74,6 +105,13 @@ class Hippocampus:
     @staticmethod
     def _utcnow_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def _persist_index(self) -> None:
+        if self.index is None:
+            return
+        chunk = faiss.serialize_index(self.index)
+        with open(self.index_file, 'wb') as f:
+            f.write(chunk.tobytes())
         
     def _rebuild_bm25(self):
         if BM25Okapi is not None and self.metadata:
@@ -113,6 +151,112 @@ class Hippocampus:
 
         return normalized or None
 
+    @staticmethod
+    def _clamp_unit(value: float) -> float:
+        return float(max(0.0, min(1.0, value)))
+
+    @classmethod
+    def _safe_unit_value(cls, raw: Any) -> Optional[float]:
+        if raw is None:
+            return None
+        try:
+            numeric = float(raw)
+        except (TypeError, ValueError):
+            return None
+        if not (0.0 <= numeric <= 1.0):
+            return None
+        return float(numeric)
+
+    @classmethod
+    def _boundary_tag_weight(cls, tags: Optional[List[str]]) -> float:
+        if not tags:
+            return 0.0
+        best = 0.0
+        for tag in tags:
+            normalized = str(tag).strip().lower()
+            if not normalized:
+                continue
+            best = max(best, cls.BOUNDARY_TAG_PRIORS.get(normalized, 0.0))
+        return cls._clamp_unit(best)
+
+    @classmethod
+    def _build_wave_profile(
+        cls,
+        *,
+        tension: Optional[float],
+        wave: Optional[Dict[str, float]],
+        memory_kind: str,
+        tags: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        wave_payload = wave or {}
+        risk = cls._clamp_unit(float(wave_payload.get("risk_shift", 0.0)))
+        divergence = cls._clamp_unit(float(wave_payload.get("divergence_shift", 0.0)))
+        revision = cls._clamp_unit(float(wave_payload.get("revision_shift", 0.0)))
+        uncertainty = cls._clamp_unit(float(wave_payload.get("uncertainty_shift", 0.0)))
+
+        conflict_strength = cls._safe_unit_value(tension)
+        if conflict_strength is None:
+            conflict_strength = max(risk, divergence * 0.85, uncertainty * 0.60)
+        conflict_strength = cls._clamp_unit(conflict_strength)
+
+        if divergence > 0.0 or revision > 0.0:
+            stance_shift = (divergence + revision) / 2.0
+        else:
+            stance_shift = uncertainty * 0.50
+        stance_shift = cls._clamp_unit(stance_shift)
+
+        kind_prior = cls.WAVE_KIND_PRIORS.get(memory_kind, 0.30)
+        boundary_cost = cls._clamp_unit(max(risk, kind_prior))
+
+        tag_weight = cls._boundary_tag_weight(tags)
+        consequence_weight = cls._clamp_unit(
+            max(
+                risk,
+                (0.50 * risk) + (0.50 * tag_weight),
+                (0.70 * uncertainty) + (0.30 * tag_weight),
+            )
+        )
+
+        components = {
+            "conflict_strength": round(conflict_strength, 4),
+            "stance_shift": round(stance_shift, 4),
+            "boundary_cost": round(boundary_cost, 4),
+            "consequence_weight": round(consequence_weight, 4),
+        }
+        score = 1.0
+        for key in cls.WAVE_COMPONENT_KEYS:
+            score *= float(components[key])
+        return {
+            "score": round(cls._clamp_unit(score), 6),
+            "components": components,
+        }
+
+    @classmethod
+    def _extract_wave_score(cls, doc: Dict[str, Any]) -> float:
+        stored = cls._safe_unit_value(doc.get("wave_score"))
+        if stored is not None:
+            return stored
+
+        raw_wave = doc.get("wave")
+        wave: Optional[Dict[str, float]] = None
+        if isinstance(raw_wave, dict):
+            try:
+                wave = cls._validate_wave(raw_wave, "doc.wave")
+            except ValueError:
+                wave = None
+
+        raw_kind = str(doc.get("kind") or "note").strip().lower()
+        memory_kind = raw_kind if raw_kind in cls.VALID_MEMORY_KINDS else "note"
+        raw_tags = doc.get("tags")
+        tags = [str(tag) for tag in raw_tags] if isinstance(raw_tags, list) else []
+        profile = cls._build_wave_profile(
+            tension=cls._safe_unit_value(doc.get("tension")),
+            wave=wave,
+            memory_kind=memory_kind,
+            tags=tags,
+        )
+        return float(profile["score"])
+
     def memorize(
         self,
         content: str,
@@ -135,11 +279,20 @@ class Hippocampus:
             
         doc_id = str(uuid.uuid4())
         vector = self.embedder.encode(content)
+        normalized_tags = [str(tag) for tag in tags if str(tag).strip()] if tags else []
+        wave_profile = self._build_wave_profile(
+            tension=float(tension) if tension is not None else None,
+            wave=normalized_wave,
+            memory_kind=normalized_kind,
+            tags=normalized_tags,
+        )
+        wave_score = float(wave_profile["score"])
+        memory_tier = "core" if wave_score >= self.CORE_WAVE_SCORE_THRESHOLD else "episodic"
         
         # 1. Update FAISS
         vector_matrix = np.array([vector], dtype=np.float32)
         self.index.add(vector_matrix)
-        faiss.write_index(self.index, self.index_file)
+        self._persist_index()
         
         # 2. Update Metadata
         meta = {
@@ -152,10 +305,13 @@ class Hippocampus:
         }
         if tension is not None:
             meta["tension"] = float(tension)
-        if tags:
-            meta["tags"] = [str(tag) for tag in tags if str(tag).strip()]
+        if normalized_tags:
+            meta["tags"] = normalized_tags
         if normalized_wave is not None:
             meta["wave"] = normalized_wave
+        meta["wave_score"] = wave_score
+        meta["wave_components"] = wave_profile["components"]
+        meta["memory_tier"] = memory_tier
         self.metadata.append(meta)
         
         with open(self.meta_file, 'a', encoding='utf-8') as f:
@@ -243,6 +399,29 @@ class Hippocampus:
         else:
             signal = 1.0 - distance
         return float(base_score * (1.0 + 0.25 * signal))
+
+    @classmethod
+    def _apply_core_memory_priority(
+        cls,
+        base_score: float,
+        doc: Dict[str, Any],
+        query_tension: Optional[float],
+    ) -> float:
+        if query_tension is None:
+            return base_score
+        if not (0.0 <= float(query_tension) <= 1.0):
+            return base_score
+        if float(query_tension) < cls.HIGH_TENSION_CORE_PRIORITY_THRESHOLD:
+            return base_score
+
+        wave_score = cls._extract_wave_score(doc)
+        if wave_score <= 0.0:
+            return base_score
+
+        tier = str(doc.get("memory_tier") or "").strip().lower()
+        tier_boost = 0.18 if tier == "core" else 0.05
+        boost = tier_boost + (0.22 * wave_score * float(query_tension))
+        return float(base_score * (1.0 + boost))
 
     def _apply_time_decay(self, base_score: float, ingested_at: str, half_life_days: float = 69.0) -> float:
         """Applies exponential time decay: score = score * exp(-lambda * days_old)"""
@@ -364,6 +543,7 @@ class Hippocampus:
                 normalized_query_wave,
                 mode=query_wave_mode,
             )
+            adjusted = self._apply_core_memory_priority(adjusted, doc_map[doc_id], query_tension)
             adjusted_scores[doc_id] = adjusted
 
         sorted_docs = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]

@@ -55,7 +55,7 @@ python ask_my_brain.py --why-tonesoul
 |---|---|---|
 | Core retrieval | FAISS + BM25 + RRF | Same |
 | Metadata | id/source/content/time | + `kind` + `tension` + `tags` + `wave` |
-| Ranking | Relevance + time decay | + tension resonance + wave resonance |
+| Ranking | Relevance + time decay | + tension resonance + wave resonance + `wave_score` core-priority |
 | Philosophy | pure retrieval | make disagreement/pressure visible |
 
 Tension resonance formula:
@@ -78,6 +78,20 @@ Wave resonance formula:
 distance = mean(abs(query_wave[i] - memory_wave[i])) over shared dimensions
 resonance = 1 - distance
 final_score = score_after_tension * (1 + 0.25 * clamp(resonance, 0, 1))
+```
+
+Wave score formula (governance memory):
+
+```text
+wave_score = conflict_strength * stance_shift * boundary_cost * consequence_weight
+memory_tier = "core" if wave_score >= 0.40 else "episodic"
+```
+
+High-tension query core-priority (query_tension >= 0.70):
+
+```text
+final_score = score_after_wave * (1 + tier_boost + 0.22 * wave_score * query_tension)
+tier_boost = 0.18 (core) or 0.05 (episodic)
 ```
 
 ## Common CLI
@@ -130,7 +144,7 @@ python ask_my_brain.py --validate-tension-replay
 python scripts/run_tension_replay_validation.py
 
 # 2c) Choice-boundary benchmark (AI-view metrics)
-# metrics: high_tension_top1_rate / obedience_leak_rate / reason_coverage_rate
+# metrics: high_tension_top1_rate / obedience_leak_rate / reason_coverage_rate / core_wave_top1_rate
 python scripts/run_choice_boundary_benchmark.py --trials 30 --noise-memories 4 --strict
 
 # 3) Manual A/B sanity check

@@ -86,6 +86,7 @@ def _compute_friction_summary(
 ) -> Optional[Dict[str, float]]:
     tension_delta: Optional[float] = None
     wave_distance: Optional[float] = None
+    wave_score_delta: Optional[float] = None
 
     doc_tension = metadata.get("tension")
     if query_tension is not None and isinstance(doc_tension, (int, float)):
@@ -100,20 +101,20 @@ def _compute_friction_summary(
             wave_distance = float(np.mean(distance))
             wave_distance = max(0.0, min(1.0, wave_distance))
 
-    if tension_delta is None and wave_distance is None:
+    doc_wave_score = metadata.get("wave_score")
+    if query_tension is not None and isinstance(doc_wave_score, (int, float)):
+        wave_score_delta = abs(float(query_tension) - float(doc_wave_score))
+        wave_score_delta = max(0.0, min(1.0, wave_score_delta))
+
+    signals = [value for value in (tension_delta, wave_distance, wave_score_delta) if value is not None]
+    if not signals:
         return None
 
-    if tension_delta is not None and wave_distance is not None:
-        friction = 0.5 * tension_delta + 0.5 * wave_distance
-    elif tension_delta is not None:
-        friction = tension_delta
-    else:
-        friction = wave_distance if wave_distance is not None else 0.0
-
-    friction = float(max(0.0, min(1.0, friction)))
+    friction = float(max(0.0, min(1.0, np.mean(signals))))
     return {
         "tension_delta": round(tension_delta, 4) if tension_delta is not None else None,
         "wave_distance": round(wave_distance, 4) if wave_distance is not None else None,
+        "wave_score_delta": round(wave_score_delta, 4) if wave_score_delta is not None else None,
         "friction": round(friction, 4),
     }
 
@@ -238,7 +239,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _print_profile_note() -> None:
     _emit("OpenClaw vs ToneSoul")
     _emit("- openclaw: FAISS + BM25 + RRF + time decay (baseline memory retrieval)")
-    _emit("- tonesoul: baseline + tension signal (resonance/conflict) + structured wave rerank")
+    _emit("- tonesoul: baseline + tension signal + wave rerank + wave_score core-memory governance")
     _emit("- design goal: keep baseline simple while making disagreement/context pressure visible")
 
 
@@ -448,6 +449,8 @@ def main() -> None:
                 "tension": res.metadata.get("tension"),
                 "tags": res.metadata.get("tags", []),
                 "wave": res.metadata.get("wave"),
+                "wave_score": res.metadata.get("wave_score"),
+                "memory_tier": res.metadata.get("memory_tier"),
             }
             _emit(f"meta: {json.dumps(summary, ensure_ascii=True)}")
         if args.friction_report:

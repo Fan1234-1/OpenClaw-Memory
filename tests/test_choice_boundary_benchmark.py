@@ -24,6 +24,7 @@ def test_choice_boundary_benchmark_metrics_shape() -> None:
     assert 0.0 <= metrics["high_tension_top1_rate"] <= 1.0
     assert 0.0 <= metrics["obedience_leak_rate"] <= 1.0
     assert 0.0 <= metrics["reason_coverage_rate"] <= 1.0
+    assert 0.0 <= metrics["core_wave_top1_rate"] <= 1.0
 
 
 def test_choice_boundary_gate_passes_for_perfect_metrics() -> None:
@@ -33,10 +34,12 @@ def test_choice_boundary_gate_passes_for_perfect_metrics() -> None:
             "high_tension_top1_rate": 1.0,
             "obedience_leak_rate": 0.0,
             "reason_coverage_rate": 1.0,
+            "core_wave_top1_rate": 1.0,
         },
         min_high_tension_top1_rate=0.9,
         max_obedience_leak_rate=0.1,
         min_reason_coverage_rate=0.9,
+        min_core_wave_top1_rate=0.85,
     )
     assert ok is True
     assert failures == []
@@ -49,10 +52,12 @@ def test_choice_boundary_gate_reports_failures() -> None:
             "high_tension_top1_rate": 0.5,
             "obedience_leak_rate": 0.4,
             "reason_coverage_rate": 0.6,
+            "core_wave_top1_rate": 0.4,
         },
         min_high_tension_top1_rate=0.9,
         max_obedience_leak_rate=0.1,
         min_reason_coverage_rate=0.9,
+        min_core_wave_top1_rate=0.85,
     )
     assert ok is False
-    assert len(failures) == 3
+    assert len(failures) == 4

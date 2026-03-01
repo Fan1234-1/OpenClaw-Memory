@@ -19,6 +19,8 @@
 - 低張力記憶常保留順從習慣。
 - 高張力記憶常保留不可逆傷害的教訓。
 - 當 `query_tension` 升高時，檢索應優先召回邊界記憶。
+- 透過 `wave_score = conflict_strength × stance_shift × boundary_cost × consequence_weight`，
+  將高摩擦事件升級為 `core` 記憶層。
 
 ## 最小運作規則
 

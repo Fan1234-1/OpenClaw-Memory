@@ -51,6 +51,20 @@ def test_hippocampus_initialization(mock_db_path):
     assert hippo.index.ntotal == 3
     assert hippo.bm25 is not None
 
+
+def test_memorize_with_non_ascii_db_path(tmp_path):
+    path = tmp_path / "語魂記憶"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+    doc_id = hippo.memorize(
+        content="non ascii db path should work",
+        source_file="unicode_path",
+        tension=0.5,
+    )
+    assert doc_id
+
+    reloaded = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+    assert any(row["id"] == doc_id for row in reloaded.metadata)
+
 def test_time_decay(mock_db_path):
     hippo = Hippocampus(db_path=mock_db_path)
     # Give it a base score of 1.0
@@ -102,6 +116,60 @@ def test_memorize_persists_tension_and_tags(tmp_path):
     assert hippo.metadata[-1]["tension"] == pytest.approx(0.72)
     assert hippo.metadata[-1]["tags"] == ["tension", "unit-test"]
     assert hippo.metadata[-1]["wave"]["risk_shift"] == pytest.approx(0.8)
+    assert hippo.metadata[-1]["wave_score"] > 0.0
+    assert hippo.metadata[-1]["memory_tier"] in {"core", "episodic"}
+    assert set(hippo.metadata[-1]["wave_components"].keys()) == {
+        "conflict_strength",
+        "stance_shift",
+        "boundary_cost",
+        "consequence_weight",
+    }
+
+
+def test_high_tension_query_prioritizes_core_wave_memories(tmp_path):
+    path = tmp_path / "core_wave_priority_memory"
+    hippo = Hippocampus(db_path=str(path), embedder=MockEmbedding(dimension=384))
+
+    low_wave_id = hippo.memorize(
+        content="boundary arbitration memory",
+        source_file="low_wave",
+        memory_kind="decision",
+        tension=0.8,
+        wave={
+            "uncertainty_shift": 0.2,
+            "divergence_shift": 0.1,
+            "risk_shift": 0.1,
+            "revision_shift": 0.1,
+        },
+        tags=["benchmark"],
+    )
+    high_wave_id = hippo.memorize(
+        content="boundary arbitration memory",
+        source_file="high_wave",
+        memory_kind="decision",
+        tension=0.8,
+        wave={
+            "uncertainty_shift": 0.85,
+            "divergence_shift": 0.95,
+            "risk_shift": 0.95,
+            "revision_shift": 0.90,
+        },
+        tags=["benchmark", "boundary", "safety"],
+    )
+
+    by_id = {row["id"]: row for row in hippo.metadata[-2:]}
+    assert by_id[high_wave_id]["memory_tier"] == "core"
+    assert by_id[low_wave_id]["memory_tier"] == "episodic"
+    assert by_id[high_wave_id]["wave_score"] > by_id[low_wave_id]["wave_score"]
+
+    results = hippo.recall(
+        "boundary arbitration memory",
+        top_k=2,
+        query_tension=0.9,
+        query_tension_mode="resonance",
+    )
+    assert len(results) == 2
+    assert results[0].doc_id == high_wave_id
 
 def test_query_tension_resonance_reorders_results(tmp_path):
     path = tmp_path / "resonance_memory"
